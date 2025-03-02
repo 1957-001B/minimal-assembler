@@ -1,0 +1,54 @@
+started 21:55
+12:00 Parsing of ORR/MOV (X) 23:39 works as such
+| "ORR X0, XZR, 1"; -> ORR {
+|                       dest: Reg(
+|                         X0,
+|                       ),
+|                       src1: Reg(
+|                         XZR,
+|                       ),
+|                       src2: Imm( 
+|                         1,
+|                       ),
+|                    },  
+
+12:30 Parsing of SVC (x) 00:14, ADD (x) 00:20, B (x) 00:49 with labels parsing ~(hardcoded/imm values only)~
+| Works similarly as above.
+
+01:00 Tests for parser (x) 1:10 used perplexity to do the heavy lifting making 6 tests rehashing what I had already.
+|    (venv) camus@uberman: ~/minimal-assembler $ cargo test
+|      Compiling minimal-assembler v0.1.0 (/Users/camus/minimal-assembler)
+|        Finished `test` profile [unoptimized + debuginfo] target(s) in 0.18s
+|        Running unittests src/main.rs (target/debug/deps/minimal_assembler-118c4d87b35b91b4)
+|
+|    running 6 tests
+|    test parser_tests::test_orr ... ok
+|    test parser_tests::test_b_address ... ok
+|    test parser_tests::test_invalid_instruction ... ok
+|    test parser_tests::test_b_label ... ok
+|    test parser_tests::test_add ... ok
+|    test parser_tests::test_svc ... ok
+|
+|    test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+|
+|    (venv) camus@uberman: ~/minimal-assembler $ 
+
+
+started 9:44
+
+12:00 Encoding of ORR (x) 11:38 
+|  encode_logical_immediate64 is non trivial for arm as it does not just convert it raw into binary. 
+|  found 
+|  https://dougallj.wordpress.com/2021/10/30/bit-twiddling-optimising-aarch64-logical-immediate-encoding-and-decoding/ 
+|  ^^ implements an algorithm copied how that does it.
+|                     
+| My encoding:     0x10110010011000000000011111100000 with N=1 sf=1
+| My encoding:     0x10110010001000000000011111100000 with N=0 sf=1 note the wrong bit is changed
+| as encoding osx: 0x10110010010000000000001111100000 with N=0 sf=0
+|                  0x10110010001000000000011111100000
+|                  0x10110010001000000000011111100000
+| it seems that as sets N=0 while I set it to one as we are working with 64bit operations only for simplicity
+| also bit 11 which is in the imms field seems to be different I have to investigate why.
+
+13:00 Encoding of Add, B, SVC.
+14:00 Files being encoded fully.
