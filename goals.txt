@@ -42,13 +42,20 @@ started 9:44
 |  https://dougallj.wordpress.com/2021/10/30/bit-twiddling-optimising-aarch64-logical-immediate-encoding-and-decoding/ 
 |  ^^ implements an algorithm copied how that does it.
 |                     
-| My encoding:     0x10110010011000000000011111100000 with N=1 sf=1
-| My encoding:     0x10110010001000000000011111100000 with N=0 sf=1 note the wrong bit is changed
-| as encoding osx: 0x10110010010000000000001111100000 with N=0 sf=0
-|                  0x10110010001000000000011111100000
-|                  0x10110010001000000000011111100000
-| it seems that as sets N=0 while I set it to one as we are working with 64bit operations only for simplicity
+| My encoding:       0x10110010011000000000011111100000 with N=1 sf=1
+|                    0x10110010001000000000011111100000 with N=0 sf=1 note the wrong bit is changed or something strange 
+| `as` encoding osx: 0x10110010010000000000001111100000 with N=0 sf=0
+|
+| it seems that `as` sets N=0 while I set it to one as we are working with 64bit operations only for simplicity
 | also bit 11 which is in the imms field seems to be different I have to investigate why.
+
+12:30 went for sunday walk with family
 
 13:00 Encoding of Add, B, SVC.
 14:00 Files being encoded fully.
+
+TODO: CLI, Relative Adressing, Headers (PITA)
+
+
+22:35 we implement LDR STR ADD ORR SVC B as nothing else is really needed to stay in the scope of the project probably will stick with direct addressing.
+
