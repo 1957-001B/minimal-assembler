@@ -64,7 +64,7 @@ struct State {
     unresolved_refs: Vec<(String, usize)>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 #[repr(u32)]
 enum Reg {
     // keeping only 64 bit registers for simplicity easy to implement 32 bit
@@ -314,26 +314,97 @@ fn parse_line(line: &str, state: &mut State) -> Option<Instruction> {
     }
     inst
 }
+fn encode_movk(rd: &Operand, imm: &Operand, shift: &Operand) -> u32 {
+    // Extract register number
+    let rd_val = match rd {
+        Operand::Reg(reg) => *reg as u32,
+        _ => panic!("Expected register for rd"),
+    };
+    
+    // Extract immediate value
+    let imm_val = match imm {
+        Operand::Imm(ImmType::Unsigned16(val)) => *val as u32,
+        _ => panic!("Expected Unsigned16 for imm"),
+    };
+    
+    // Extract shift amount
+    let shift_val = match shift {
+        Operand::Imm(ImmType::Unsigned16(val)) => *val as u32,
+        _ => panic!("Expected Unsigned16 for shift"),
+    };
+    
+    // Calculate hw field based on shift
+    let hw = match shift_val {
+        0 => 0b00,
+        16 => 0b01,
+        32 => 0b10,
+        48 => 0b11,
+        _ => panic!("Invalid shift value for MOVK"),
+    };
+    
+    // Set sf bit (1 for 64-bit, 0 for 32-bit)
+    let sf = 1; // 64-bit variant
+    
+    // Construct the instruction using the encoding format:
+    // sf(1) opc(7) hw(2) imm16(16) Rd(5) op(1)
+    let encoded = (sf << 31) |            // sf bit
+                 (0b11100101 << 23) |     // opc field
+                 (hw << 21) |             // hw field
+                 (imm_val << 5) |         // imm16 field
+                 rd_val;                  // Rd field
+    
+    encoded
+}
+fn encode_movz(rd: &Operand, imm: &Operand, shift: &Operand) -> u32 {
+    // Extract register number
+    let rd_val = match rd {
+        Operand::Reg(reg) => *reg as u32,
+        _ => panic!("Expected register for rd"),
+    };
+    
+    // Extract immediate value
+    let imm_val = match imm {
+        Operand::Imm(ImmType::Unsigned16(val)) => *val as u32,
+        _ => panic!("Expected Unsigned16 for imm"),
+    };
+    dbg!(&imm_val);
+    
+    // Extract shift amount
+    let shift_val = match shift {
+        Operand::Imm(ImmType::Unsigned16(val)) => *val as u32,
+        _ => panic!("Expected Unsigned16 for shift"),
+    };
+    
+    // Calculate hw field based on shift
+    let hw = match shift_val {
+        0 => 0b00,
+        16 => 0b01,
+        32 => 0b10,
+        48 => 0b11,
+        _ => panic!("Invalid shift value for MOVK"),
+    };
+    
+    // Set sf bit (1 for 64-bit, 0 for 32-bit)
+    let sf = 1; // 64-bit variant
+    
+    // Construct the instruction using the encoding format:
+    // sf(1) opc(7) hw(2) imm16(16) Rd(5) op(1)
+    let encoded = (sf << 31) |            // sf bit
+                 (0b10100101<< 23) |     // opc field
+                 (hw << 21) |             // hw field
+                 (imm_val << 5) |         // imm16 field
+                 rd_val;                  // Rd field
+    
+    encoded
+}
 
-// fn encode(op: Instruction) -> u32 {
-//     match op {
-//         Instruction::ORR { dest, src1, src2 } => {
-//             match (src1,src2) {
-//                 // Imm ==> Reg
-//                 (Operand::Reg(rn), Operand::Imm(rm)) => {
-//                     let sf = 1;
-//                     let opcode = 0x64;
-//                     let N = 0;
-//                     let immr =
-
-//                     let encoding: u32 = 0;
-//                     encoding
-//                 }
-//             }
-//         }
-//         Instruction::ADD { dest, src1, src2 } => encode_add_imm(dest,src1,src2)
-//     }
-// }
+fn encode_line(op: Instruction, _state: &mut State) -> u32 {
+    match op {
+        Instruction::MOVK { rd, imm, shift } =>  encode_movk(&rd, &imm, &shift),
+        Instruction::MOVZ { rd, imm, shift } => encode_movz(&rd, &imm, &shift),
+        _ => 0
+    }
+}
 fn assemble(path: String) -> io::Result<()> {
     let mut file = File::open(path)?;
     let mut contents = String::new();
@@ -355,14 +426,23 @@ fn assemble(path: String) -> io::Result<()> {
     };
 
     let mut parsed = Vec::new();
-
+    // first pass
     for l in &contents {
         if let Some(instruction) = parse_line(l, &mut state) {
             parsed.push(instruction);
         }
     }
 
-    println!("{:#?}", parsed);
+    let mut encoded: Vec<u32> =  Vec::new();
+
+    //second pass
+    for l in parsed{
+        let encoded_line = encode_line(l, &mut state);
+        println!("{:0b}",&encoded_line);
+        encoded.push(encoded_line);
+        
+    } 
+
 
     return Ok(());
 }
