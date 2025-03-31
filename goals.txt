@@ -61,3 +61,175 @@ TODO: CLI, Relative Adressing, Headers (PITA)
 
 
 23:05 I feel like we need to have concrete scope for the project otherwise I am going to write as
+
+We are parsing the whole file no promblems directives are not yet working
+[src/main.rs:350:5] &contents = [
+    ".text",
+    ".global _start",
+    "_start:",
+    "MOVZ X8, #0x4",
+    "MOVZ X0, #0x1",
+    "LDR X1, =message",
+    "MOVZ X2, #0xD",
+    "SVC #0x0",
+    "MOVZ X8, #0x1",
+    "MOVZ X0, #0x0",
+    "SVC #0x0",
+    ".data",
+    "message:",
+    ".asciz \"Hello, World!\\n\"",
+]
+[
+    ".TEXT",
+]
+[
+    ".GLOBAL",
+    "_start",
+]
+[
+    "MOVZ",
+    "X8",
+    "#0x4",
+]
+[
+    "MOVZ",
+    "X0",
+    "#0x1",
+]
+[
+    "LDR",
+    "X1",
+    "=message",
+]
+[
+    "MOVZ",
+    "X2",
+    "#0xD",
+]
+[
+    "SVC",
+    "#0x0",
+]
+[
+    "MOVZ",
+    "X8",
+    "#0x1",
+]
+[
+    "MOVZ",
+    "X0",
+    "#0x0",
+]
+[
+    "SVC",
+    "#0x0",
+]
+[
+    ".DATA",
+]
+[
+    ".ASCIZ",
+    "\"Hello",
+    "World!\\n\"",
+]
+[
+    MOVZ {
+        rd: Reg(
+            X8,
+        ),
+        imm: Imm(
+            Unsigned16(
+                4,
+            ),
+        ),
+        shift: Imm(
+            Unsigned16(
+                0,
+            ),
+        ),
+    },
+    MOVZ {
+        rd: Reg(
+            X0,
+        ),
+        imm: Imm(
+            Unsigned16(
+                1,
+            ),
+        ),
+        shift: Imm(
+            Unsigned16(
+                0,
+            ),
+        ),
+    },
+    LDR {
+        dest: Reg(
+            X1,
+        ),
+        addr: Imm(
+            UnresolvedSymbol(
+                "message",
+            ),
+        ),
+    },
+    MOVZ {
+        rd: Reg(
+            X2,
+        ),
+        imm: Imm(
+            Unsigned16(
+                13,
+            ),
+        ),
+        shift: Imm(
+            Unsigned16(
+                0,
+            ),
+        ),
+    },
+    SVC {
+        syscall: Imm(
+            Unsigned(
+                0,
+            ),
+        ),
+    },
+    MOVZ {
+        rd: Reg(
+            X8,
+        ),
+        imm: Imm(
+            Unsigned16(
+                1,
+            ),
+        ),
+        shift: Imm(
+            Unsigned16(
+                0,
+            ),
+        ),
+    },
+    MOVZ {
+        rd: Reg(
+            X0,
+        ),
+        imm: Imm(
+            Unsigned16(
+                0,
+            ),
+        ),
+        shift: Imm(
+            Unsigned16(
+                0,
+            ),
+        ),
+    },
+    SVC {
+        syscall: Imm(
+            Unsigned(
+                0,
+            ),
+        ),
+    },
+]

@@ -2,14 +2,8 @@ use std::{
     collections::HashMap,
     fs::File,
     io::{self, Read},
-    path,
 };
 
-// const TEST_LINE: &str = "ORR X0, XZR, 1";
-// const TEST_LINE: &str = "LDR X0, =0x1234567890ABCDEF";
-// const TEST_LINE: &str = "main:";
-//const TEST_LINE: &str = "MOVK X0, #0x1234";
-const TEST_LINE: &str = "MOVK X0, #0xABCD, LSL #16";
 #[derive(Debug, PartialEq)]
 enum Instruction {
     // Minimal
@@ -19,9 +13,9 @@ enum Instruction {
         shift: Operand,
     },
     MOVZ {
-        dest: Operand,
-        src1: Operand,
-        src2: Operand,
+        rd: Operand,
+        imm: Operand,
+        shift: Operand,
     },
     ORR {
         dest: Operand,
@@ -48,23 +42,26 @@ enum Instruction {
         syscall: Operand,
     },
 }
+
 #[derive(Debug, PartialEq)]
 enum Operand {
     Reg(Reg),
     Imm(ImmType), // TODO implement Uimm (unisgned) and Simm (signed) for use with ADD and B relative adressing
 }
+
 #[derive(Debug, PartialEq)]
 enum ImmType {
     Unsigned(u64),
     Unsigned16(u16),
-    Signed(i64),
-    Logical(u64), // For bitmask immediates
     Address(u64),
+    UnresolvedSymbol(String),
 }
 
+#[derive(Debug)]
 struct State {
     labels: HashMap<String, u64>,
     current_addr: u64,
+    unresolved_refs: Vec<(String, usize)>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -154,45 +151,65 @@ fn parse_line(line: &str, state: &mut State) -> Option<Instruction> {
         return None;
     }
 
-    let mut parts: Vec<&str> = line
+    let mut parts: Vec<String> = line
         .split(|c: char| c == ',' || c.is_whitespace())
         .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
         .collect();
-    
-    let opcode_upper = parts[0].to_uppercase();
-    
-    parts[0] = &opcode_upper;
 
+    if let Some(first) = parts.first_mut() {
+        *first = first.to_uppercase().to_string();
+    }
 
+    let parts: Vec<&str> = parts.iter().map(|s| s.as_str()).collect();
+    println!("{:#?}", parts);
     let inst = match parts.as_slice() {
         // without shift
-        ["MOVK", rd, imm] => dbg!(Some(Instruction::MOVK {
+        ["MOVK", rd, imm] => Some(Instruction::MOVK {
             rd: Operand::Reg(parse_register(rd.trim_end_matches(','))),
             imm: Operand::Imm(ImmType::Unsigned16(
                 u16::from_str_radix(imm.strip_prefix("#0x").unwrap().trim_end_matches(','), 16)
-                    .unwrap()
+                    .unwrap(),
             )),
-            shift: Operand::Imm(ImmType::Unsigned16(0))
-        })),
+            shift: Operand::Imm(ImmType::Unsigned16(0)),
+        }),
         //shifted
-        ["MOVK", rd, imm, "LSL", shift] => dbg!(Some(Instruction::MOVK {
+        ["MOVK", rd, imm, "LSL", shift] => Some(Instruction::MOVK {
             rd: Operand::Reg(parse_register(rd.trim_end_matches(','))),
             imm: Operand::Imm(ImmType::Unsigned16(
                 u16::from_str_radix(imm.strip_prefix("#0x").unwrap().trim_end_matches(','), 16)
-                    .unwrap()
+                    .unwrap(),
             )),
             shift: {
                 let shift_value = shift.strip_prefix('#').unwrap();
                 Operand::Imm(ImmType::Unsigned16(shift_value.parse::<u16>().unwrap()))
-            }
-        })),
+            },
+        }),
 
-        //   ["MOVZ", dest, src1, src2] => dbg!(Some(Instruction::MOVZ{
+        ["MOVZ", rd, imm] => Some(Instruction::MOVZ {
+            rd: Operand::Reg(parse_register(rd.trim_end_matches(','))),
+            imm: Operand::Imm(ImmType::Unsigned16(
+                u16::from_str_radix(imm.strip_prefix("#0x").unwrap().trim_end_matches(','), 16)
+                    .unwrap(),
+            )),
+            shift: Operand::Imm(ImmType::Unsigned16(0)),
+        }),
 
-        //     })),
+        //shifted
+        ["MOVZ", rd, imm, "LSL", shift] => Some(Instruction::MOVZ {
+            rd: Operand::Reg(parse_register(rd.trim_end_matches(','))),
+            imm: Operand::Imm(ImmType::Unsigned16(
+                u16::from_str_radix(imm.strip_prefix("#0x").unwrap().trim_end_matches(','), 16)
+                    .unwrap(),
+            )),
+            shift: {
+                let shift_value = shift.strip_prefix('#').unwrap();
+                Operand::Imm(ImmType::Unsigned16(shift_value.parse::<u16>().unwrap()))
+            },
+        }),
 
         // https://developer.arm.com/documentation/ddi0602/2024-12/Base-Instructions/ORR--immediate---Bitwise-OR--immediate--?lang=en
-        ["ORR", dest, src1, src2] => dbg!(Some(Instruction::ORR {
+        ["ORR", dest, src1, src2] => Some(Instruction::ORR {
             dest: Operand::Reg(parse_register(dest.trim_end_matches(','))),
             src1: if src1.starts_with('X') {
                 Operand::Reg(parse_register(src1.trim_end_matches(',')))
@@ -209,9 +226,10 @@ fn parse_line(line: &str, state: &mut State) -> Option<Instruction> {
                     src2.trim_end_matches(',').parse().unwrap(),
                 ))
             },
-        })),
+        }),
+
         // https://developer.arm.com/documentation/ddi0602/2024-12/Base-Instructions/ADD--immediate---Add-immediate-value-?lang=en or register???
-        ["ADD", dest, src1, src2] => dbg!(Some(Instruction::ADD {
+        ["ADD", dest, src1, src2] => Some(Instruction::ADD {
             dest: Operand::Reg(parse_register(dest.trim_end_matches(','))),
             src1: if src1.starts_with('X') {
                 Operand::Reg(parse_register(src1.trim_end_matches(',')))
@@ -228,20 +246,29 @@ fn parse_line(line: &str, state: &mut State) -> Option<Instruction> {
                     src2.trim_end_matches(',').parse().unwrap(),
                 ))
             },
-        })),
+        }),
         // https://developer.arm.com/documentation/ddi0602/2024-12/Base-Instructions/LDR--immediate---Load-register--immediate--?lang=en#XnSP_option
-        ["LDR", dest, addr] => dbg!(Some(Instruction::LDR {
+        ["LDR", dest, addr] => Some(Instruction::LDR {
             dest: Operand::Reg(parse_register(dest.trim_end_matches(','))),
             addr: if addr.starts_with('=') {
-                Operand::Imm(ImmType::Address(
-                    u64::from_str_radix(addr.trim_start_matches("=0x"), 16).unwrap(),
-                ))
+                if addr.starts_with("0x") {
+                    Operand::Imm(ImmType::Address(
+                        u64::from_str_radix(addr.strip_prefix("0x").unwrap(), 16).unwrap_or(0),
+                    ))
+                } else {
+                    let symbol_name = addr.strip_prefix('=').unwrap().to_string();
+                    let unref = Operand::Imm(ImmType::UnresolvedSymbol(symbol_name.clone()));
+                    state
+                        .unresolved_refs
+                        .push((symbol_name, state.current_addr.try_into().unwrap()));
+                    unref
+                }
             } else {
-                panic!("Only literal addressing supported");
+                panic!("Literal Addr Only")
             },
-        })),
+        }),
         // https://developer.arm.com/documentation/ddi0602/2024-12/Base-Instructions/STR--immediate---Store-register--immediate--?lang=en
-        ["STUR", dest, addr] => dbg!(Some(Instruction::STUR {
+        ["STUR", dest, addr] => Some(Instruction::STUR {
             src: Operand::Reg(parse_register(dest.trim_end_matches(','))),
             addr: if addr.starts_with('=') {
                 Operand::Imm(ImmType::Address(
@@ -250,10 +277,10 @@ fn parse_line(line: &str, state: &mut State) -> Option<Instruction> {
             } else {
                 panic!("Only literal addressing supported");
             },
-        })),
+        }),
 
         // https://developer.arm.com/documentation/ddi0602/2024-12/Base-Instructions/B--Branch-?lang=en
-        ["B", addr] => dbg!(Some(Instruction::B {
+        ["B", addr] => Some(Instruction::B {
             addr: if addr.starts_with("0x") {
                 Operand::Imm(ImmType::Address(
                     u64::from_str_radix(addr.trim_start_matches("0x"), 16).unwrap(),
@@ -262,10 +289,10 @@ fn parse_line(line: &str, state: &mut State) -> Option<Instruction> {
                 Operand::Imm(ImmType::Unsigned(0))
             } else {
                 panic!("Invalid Address")
-            }
-        })),
+            },
+        }),
         // https://developer.arm.com/documentation/ddi0602/2024-12/Base-Instructions/SVC--Supervisor-call-?lang=en
-        ["SVC", syscall] => dbg!(Some(Instruction::SVC {
+        ["SVC", syscall] => Some(Instruction::SVC {
             syscall: if syscall.starts_with('#') {
                 Operand::Imm(ImmType::Unsigned(
                     u64::from_str_radix(
@@ -276,12 +303,15 @@ fn parse_line(line: &str, state: &mut State) -> Option<Instruction> {
                 ))
             } else {
                 panic!("Syntax error # for imm");
-            }
-        })),
+            },
+        }),
 
         _ => None,
     };
-    state.current_addr += 4;
+    if !line.trim_start().starts_with('.') {
+        println!("{:#?}", state);
+        state.current_addr += 4;
+    }
     inst
 }
 
@@ -307,6 +337,7 @@ fn parse_line(line: &str, state: &mut State) -> Option<Instruction> {
 fn assemble(path: String) -> io::Result<()> {
     let mut file = File::open(path)?;
     let mut contents = String::new();
+
     file.read_to_string(&mut contents)?;
 
     let contents: Vec<&str> = contents
@@ -314,10 +345,13 @@ fn assemble(path: String) -> io::Result<()> {
         .map(|l| l.trim())
         .filter(|l| !l.starts_with("//") && !l.trim().is_empty())
         .collect();
+
     dbg!(&contents);
+
     let mut state = State {
         labels: HashMap::new(),
         current_addr: 0,
+        unresolved_refs: Vec::new(),
     };
 
     let mut parsed = Vec::new();
