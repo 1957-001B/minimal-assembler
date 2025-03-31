@@ -59,3 +59,5 @@ TODO: CLI, Relative Adressing, Headers (PITA)
 
 22:35 we implement LDR STR ADD ORR SVC B as nothing else is really needed to stay in the scope of the project probably will stick with direct addressing.
 
+
+23:05 I feel like we need to have concrete scope for the project otherwise I am going to write as
