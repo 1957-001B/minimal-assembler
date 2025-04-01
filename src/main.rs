@@ -59,9 +59,18 @@ enum ImmType {
 
 #[derive(Debug)]
 struct State {
-    labels: HashMap<String, u64>,
     current_addr: u64,
+    labels: HashMap<String, u64>,
     unresolved_refs: Vec<(String, usize)>,
+}
+impl State {
+    fn new() -> Self{
+        State {
+            labels: HashMap::new(),
+            current_addr: 0,
+            unresolved_refs: Vec::new(),
+        };
+    }
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -419,11 +428,7 @@ fn assemble(path: String) -> io::Result<()> {
 
     dbg!(&contents);
 
-    let mut state = State {
-        labels: HashMap::new(),
-        current_addr: 0,
-        unresolved_refs: Vec::new(),
-    };
+    
 
     let mut parsed = Vec::new();
     // first pass
