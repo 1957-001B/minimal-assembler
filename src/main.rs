@@ -2,7 +2,7 @@ use core::panic;
 use std::{
     collections::HashMap,
     fs::File,
-    io::{self, Read},
+    io::{self, BufWriter, Read, Write},
 };
 
 #[derive(Debug, PartialEq)]
@@ -155,7 +155,7 @@ fn parse_line(line: &str, state: &mut State) -> Option<Instruction> {
     // Determine if a label
     if line.ends_with(':') {
         state.labels.insert(
-            dbg!(line.strip_suffix(':').unwrap().to_string()),
+            line.strip_suffix(':').unwrap().to_string(),
             state.current_addr,
         );
         return None;
@@ -172,7 +172,7 @@ fn parse_line(line: &str, state: &mut State) -> Option<Instruction> {
     }
 
     let parts: Vec<&str> = parts.iter().map(|s| s.as_str()).collect();
-    println!("{:#?}", parts);
+    //println!("{:#?}", parts);
     let inst = match parts.as_slice() {
         // without shift
         ["MOVK", rd, imm] => Some(Instruction::MOVK {
@@ -304,8 +304,8 @@ fn parse_line(line: &str, state: &mut State) -> Option<Instruction> {
         // https://developer.arm.com/documentation/ddi0602/2024-12/Base-Instructions/SVC--Supervisor-call-?lang=en
         ["SVC", syscall] => Some(Instruction::SVC {
             syscall: if syscall.starts_with('#') {
-                Operand::Imm(ImmType::Unsigned(
-                    u64::from_str_radix(
+                Operand::Imm(ImmType::Unsigned16(
+                    u16::from_str_radix(
                         syscall.trim_start_matches('#').trim_start_matches("0x"),
                         16,
                     )
@@ -319,7 +319,7 @@ fn parse_line(line: &str, state: &mut State) -> Option<Instruction> {
         _ => None,
     };
     if !line.trim_start().starts_with('.') {
-        println!("{:#?}", state);
+        // println!("{:#?}", state);
         state.current_addr += 4;
     }
     inst
@@ -399,7 +399,7 @@ fn encode_movz(rd: &Operand, imm: &Operand, shift: &Operand) -> u32 {
     // Construct the instruction using the encoding format:
     // sf(1) opc(7) hw(2) imm16(16) Rd(5) op(1)
     let encoded = (sf << 31) |            // sf bit
-                 (0b10100101<< 23) |     // opc field
+                 (0b010100101<< 23) |     // opc field
                  (hw << 21) |             // hw field
                  (imm_val << 5) |         // imm16 field
                  rd_val; // Rd field
@@ -423,6 +423,21 @@ fn encode_ldr(rt: &Operand) -> u32 {
                 (opc << 30) |          // opc field (01 for 64-bit variant)
                 (0 << 5) |             // imm19 field (zeroed out)
                 (rt); // Rt field
+
+    encoded
+}
+fn encode_svc(syscall: &Operand) -> u32 {
+    // Extract register number Rt
+    let syscall: u16 = match syscall {
+        Operand::Imm(ImmType::Unsigned16(syscall)) => *syscall as u16,
+        _ => panic!("Oh crap"),
+    };
+
+    // For LDR literal (PC-relative)
+    // Opcode is 0x58 (01011000) for 64-bit variant
+    // Zero out the imm19 field - it will be filled in during the second pass
+
+    let encoded: u32 = (0b11010100000 << 21) | ((syscall as u32) << 5) | 0b1;
 
     encoded
 }
@@ -455,6 +470,7 @@ fn encode_line(op: &Instruction, _state: &mut State) -> u32 {
         Instruction::MOVK { rd, imm, shift } => encode_movk(&rd, &imm, &shift),
         Instruction::MOVZ { rd, imm, shift } => encode_movz(&rd, &imm, &shift),
         Instruction::LDR { rt, label: _ } => encode_ldr(&rt),
+        Instruction::SVC { syscall } => encode_svc(syscall),
 
         _ => 0,
     }
@@ -471,7 +487,7 @@ fn assemble(path: String) -> io::Result<()> {
         .filter(|l| !l.starts_with("//") && !l.trim().is_empty())
         .collect();
 
-    dbg!(&contents);
+    //dbg!(&contents);
 
     let mut state = State::new();
 
@@ -497,15 +513,23 @@ fn assemble(path: String) -> io::Result<()> {
             }
             _ => {}
         }
-        println!("{:032b}", &encoded_line);
+        println!("{:?} {:032b}", &instruction, &encoded_line);
         encoded.push(encoded_line);
     }
-    println!("Final State: {:#?}", &state);
+    // println!("Final State: {:#?}", &state);
+    let file = File::create("output.bin").expect("Failed to create file");
 
+    let mut writer = BufWriter::new(file);
+
+    for instruction in &encoded {
+        let bytes = instruction.to_le_bytes();
+
+        writer.write_all(&bytes)?;
+    }
     return Ok(());
 }
 fn main() {
-    let _asm = assemble("goal.s".to_string());
+    let _ = assemble("goal.s".to_string());
 }
 
 // tests

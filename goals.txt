@@ -245,4 +245,6 @@ Ok
 18:42 Encode LDR 
 19:42
 20:42 
-29:42 Assemble Goal.txt
+21:11 we have output.bin kinda hard to test rn but using llms it seems to be correct for armv8a https://developer.arm.com/documentation/ddi0602/2024-12/Base-Instructions/MOVZ--Move-wide-with-zero-?lang=en 
+29:42 Assemble Goal.txt . Not need to find a good way to link it ran into fumbles with osx verisons  in ld idk. Directives are also not yet working.
+
