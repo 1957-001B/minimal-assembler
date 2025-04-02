@@ -419,8 +419,7 @@ fn encode_ldr(rt: &Operand) -> u32 {
 
     let opc = 1;
 
-    let encoded = 
-                (0b00011000 << 24) |  // Fixed bits for LDR literal
+    let encoded = (0b00011000 << 24) |  // Fixed bits for LDR literal
                 (opc << 30) |          // opc field (01 for 64-bit variant)
                 (0 << 5) |             // imm19 field (zeroed out)
                 (rt); // Rt field
@@ -498,7 +497,7 @@ fn assemble(path: String) -> io::Result<()> {
             }
             _ => {}
         }
-       println!("{:032b}", &encoded_line);
+        println!("{:032b}", &encoded_line);
         encoded.push(encoded_line);
     }
     println!("Final State: {:#?}", &state);
