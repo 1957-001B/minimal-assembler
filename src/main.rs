@@ -69,7 +69,7 @@ impl State {
             labels: HashMap::new(),
             current_addr: 0,
             unresolved_refs: Vec::new(),
-        };
+        }
     }
 }
 
@@ -428,7 +428,8 @@ fn assemble(path: String) -> io::Result<()> {
 
     dbg!(&contents);
 
-    
+   let mut state  = State::new();
+
 
     let mut parsed = Vec::new();
     // first pass
