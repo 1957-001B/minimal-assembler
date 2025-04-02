@@ -1,3 +1,4 @@
+use core::panic;
 use std::{
     collections::HashMap,
     fs::File,
@@ -31,8 +32,8 @@ enum Instruction {
         addr: Operand,
     },
     LDR {
-        dest: Operand,
-        addr: Operand,
+        rt: Operand,
+        label: Operand,
     },
     STUR {
         src: Operand,
@@ -64,7 +65,7 @@ struct State {
     unresolved_refs: Vec<(String, usize)>,
 }
 impl State {
-    fn new() -> Self{
+    fn new() -> Self {
         State {
             labels: HashMap::new(),
             current_addr: 0,
@@ -257,15 +258,15 @@ fn parse_line(line: &str, state: &mut State) -> Option<Instruction> {
             },
         }),
         // https://developer.arm.com/documentation/ddi0602/2024-12/Base-Instructions/LDR--immediate---Load-register--immediate--?lang=en#XnSP_option
-        ["LDR", dest, addr] => Some(Instruction::LDR {
-            dest: Operand::Reg(parse_register(dest.trim_end_matches(','))),
-            addr: if addr.starts_with('=') {
-                if addr.starts_with("0x") {
+        ["LDR", rt, label] => Some(Instruction::LDR {
+            rt: Operand::Reg(parse_register(rt.trim_end_matches(','))),
+            label: if label.starts_with('=') {
+                if label.starts_with("0x") {
                     Operand::Imm(ImmType::Address(
-                        u64::from_str_radix(addr.strip_prefix("0x").unwrap(), 16).unwrap_or(0),
+                        u64::from_str_radix(label.strip_prefix("0x").unwrap(), 16).unwrap_or(0),
                     ))
                 } else {
-                    let symbol_name = addr.strip_prefix('=').unwrap().to_string();
+                    let symbol_name = label.strip_prefix('=').unwrap().to_string();
                     let unref = Operand::Imm(ImmType::UnresolvedSymbol(symbol_name.clone()));
                     state
                         .unresolved_refs
@@ -329,19 +330,19 @@ fn encode_movk(rd: &Operand, imm: &Operand, shift: &Operand) -> u32 {
         Operand::Reg(reg) => *reg as u32,
         _ => panic!("Expected register for rd"),
     };
-    
+
     // Extract immediate value
     let imm_val = match imm {
         Operand::Imm(ImmType::Unsigned16(val)) => *val as u32,
         _ => panic!("Expected Unsigned16 for imm"),
     };
-    
+
     // Extract shift amount
     let shift_val = match shift {
         Operand::Imm(ImmType::Unsigned16(val)) => *val as u32,
         _ => panic!("Expected Unsigned16 for shift"),
     };
-    
+
     // Calculate hw field based on shift
     let hw = match shift_val {
         0 => 0b00,
@@ -350,18 +351,18 @@ fn encode_movk(rd: &Operand, imm: &Operand, shift: &Operand) -> u32 {
         48 => 0b11,
         _ => panic!("Invalid shift value for MOVK"),
     };
-    
+
     // Set sf bit (1 for 64-bit, 0 for 32-bit)
     let sf = 1; // 64-bit variant
-    
+
     // Construct the instruction using the encoding format:
     // sf(1) opc(7) hw(2) imm16(16) Rd(5) op(1)
     let encoded = (sf << 31) |            // sf bit
                  (0b11100101 << 23) |     // opc field
                  (hw << 21) |             // hw field
                  (imm_val << 5) |         // imm16 field
-                 rd_val;                  // Rd field
-    
+                 rd_val; // Rd field
+
     encoded
 }
 fn encode_movz(rd: &Operand, imm: &Operand, shift: &Operand) -> u32 {
@@ -370,19 +371,19 @@ fn encode_movz(rd: &Operand, imm: &Operand, shift: &Operand) -> u32 {
         Operand::Reg(reg) => *reg as u32,
         _ => panic!("Expected register for rd"),
     };
-    
+
     // Extract immediate value
     let imm_val = match imm {
         Operand::Imm(ImmType::Unsigned16(val)) => *val as u32,
         _ => panic!("Expected Unsigned16 for imm"),
     };
-    
+
     // Extract shift amount
     let shift_val = match shift {
         Operand::Imm(ImmType::Unsigned16(val)) => *val as u32,
         _ => panic!("Expected Unsigned16 for shift"),
     };
-    
+
     // Calculate hw field based on shift
     let hw = match shift_val {
         0 => 0b00,
@@ -391,26 +392,71 @@ fn encode_movz(rd: &Operand, imm: &Operand, shift: &Operand) -> u32 {
         48 => 0b11,
         _ => panic!("Invalid shift value for MOVK"),
     };
-    
+
     // Set sf bit (1 for 64-bit, 0 for 32-bit)
     let sf = 1; // 64-bit variant
-    
+
     // Construct the instruction using the encoding format:
     // sf(1) opc(7) hw(2) imm16(16) Rd(5) op(1)
     let encoded = (sf << 31) |            // sf bit
                  (0b10100101<< 23) |     // opc field
                  (hw << 21) |             // hw field
                  (imm_val << 5) |         // imm16 field
-                 rd_val;                  // Rd field
-    
+                 rd_val; // Rd field
+
+    encoded
+}
+fn encode_ldr(rt: &Operand) -> u32 {
+    // Extract register number Rt
+    let rt = match rt {
+        Operand::Reg(reg) => *reg as u32,
+        _ => panic!("Expected register for rd"),
+    };
+
+    // For LDR literal (PC-relative)
+    // Opcode is 0x58 (01011000) for 64-bit variant
+    // Zero out the imm19 field - it will be filled in during the second pass
+
+    let opc = 01;
+
+    let encoded = (0b00011000 << 24) |  // Fixed bits for LDR literal
+                (opc << 30) |          // opc field (01 for 64-bit variant)
+                (0 << 5) |             // imm19 field (zeroed out)
+                (rt); // Rt field
+
     encoded
 }
 
-fn encode_line(op: Instruction, _state: &mut State) -> u32 {
+fn resolve_address(encoding: u32, state: &State) -> u32 {
+    // +/-1MB, is encoded as "imm19" times 4.
+    if let Some((symbol, instr_addr)) = state.unresolved_refs.last() {
+        if let Some(&targ_addr) = state.labels.get(symbol) {
+            let pc = instr_addr + 4;
+
+            let offset = (targ_addr as i64) - (pc as i64);
+
+            assert!(
+                offset >= -1048576 && offset <= 1048575,
+                "LDR offset out of range"
+            ); //  +/-1MB?
+
+            let imm19 = ((offset >> 2) & 0x7FFFF) as u32;
+
+            let resolved_encoding: u32 = (encoding & 0xFF00001F) | (imm19 << 5);
+
+            return resolved_encoding;
+        }
+    }
+    encoding
+}
+
+fn encode_line(op: &Instruction, _state: &mut State) -> u32 {
     match op {
-        Instruction::MOVK { rd, imm, shift } =>  encode_movk(&rd, &imm, &shift),
+        Instruction::MOVK { rd, imm, shift } => encode_movk(&rd, &imm, &shift),
         Instruction::MOVZ { rd, imm, shift } => encode_movz(&rd, &imm, &shift),
-        _ => 0
+        Instruction::LDR { rt, label: _ } => encode_ldr(&rt),
+
+        _ => 0,
     }
 }
 fn assemble(path: String) -> io::Result<()> {
@@ -427,8 +473,7 @@ fn assemble(path: String) -> io::Result<()> {
 
     dbg!(&contents);
 
-   let mut state  = State::new();
-
+    let mut state = State::new();
 
     let mut parsed = Vec::new();
     // first pass
@@ -438,17 +483,24 @@ fn assemble(path: String) -> io::Result<()> {
         }
     }
 
-    let mut encoded: Vec<u32> =  Vec::new();
+    let mut encoded: Vec<u32> = Vec::new();
 
     //second pass
-    for l in parsed{
-        let encoded_line = encode_line(l, &mut state);
-        println!("{:0b}",&encoded_line);
-        encoded.push(encoded_line);
-        
-    } 
-    println!("Final State: {:#?}", &state);
+    for (_l, instruction) in parsed.iter().enumerate() {
+        let mut encoded_line: u32 = encode_line(instruction, &mut state);
 
+        match instruction {
+            Instruction::LDR { rt: _, label } => {
+                if let Operand::Imm(ImmType::UnresolvedSymbol(_symbol)) = label {
+                    encoded_line = resolve_address(encoded_line, &state);
+                }
+            }
+            _ => {}
+        }
+        println!("{:0b}", &encoded_line);
+        encoded.push(encoded_line);
+    }
+    println!("Final State: {:#?}", &state);
 
     return Ok(());
 }
