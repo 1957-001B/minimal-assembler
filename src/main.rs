@@ -154,7 +154,7 @@ fn parse_line(line: &str, state: &mut State) -> Option<Instruction> {
     // Determine if a label
     if line.ends_with(':') {
         state.labels.insert(
-            line.strip_suffix(':').unwrap().to_string(),
+            dbg!(line.strip_suffix(':').unwrap().to_string()),
             state.current_addr,
         );
         return None;
@@ -376,7 +376,6 @@ fn encode_movz(rd: &Operand, imm: &Operand, shift: &Operand) -> u32 {
         Operand::Imm(ImmType::Unsigned16(val)) => *val as u32,
         _ => panic!("Expected Unsigned16 for imm"),
     };
-    dbg!(&imm_val);
     
     // Extract shift amount
     let shift_val = match shift {
@@ -448,6 +447,7 @@ fn assemble(path: String) -> io::Result<()> {
         encoded.push(encoded_line);
         
     } 
+    println!("Final State: {:#?}", &state);
 
 
     return Ok(());
