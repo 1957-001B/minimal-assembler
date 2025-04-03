@@ -5,6 +5,7 @@ use std::{
     io::{self, BufWriter, Read, Write},
 };
 
+const DEBUG: bool = false;
 #[derive(Debug, PartialEq)]
 enum Instruction {
     // Minimal
@@ -58,11 +59,13 @@ enum ImmType {
     UnresolvedSymbol(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct State {
     current_addr: u64,
     labels: HashMap<String, u64>,
     unresolved_refs: Vec<(String, usize)>,
+    current_section: String,
+    data: Vec<u8>
 }
 impl State {
     fn new() -> Self {
@@ -70,6 +73,8 @@ impl State {
             labels: HashMap::new(),
             current_addr: 0,
             unresolved_refs: Vec::new(),
+            current_section: ".text".to_string(),
+            data: Vec::new(),
         }
     }
 }
@@ -111,6 +116,28 @@ enum Reg {
     X30 = 30,
     XZR = 31,
 }
+fn parse_directive (directive: &str, state: &mut State) -> Option<Vec<u8>>{
+    let parts: Vec<&str> = directive.split_whitespace().collect();
+    match parts[0] {
+        ".data" => {
+            state.current_section = ".data".to_string();
+            None
+        },
+        ".text" => {
+            state.current_section = ".text".to_string();
+            None
+        },
+        ".asciz" => {
+            let s = directive.split('"').nth(1).unwrap_or("");
+            let mut bytes = s.as_bytes().to_vec();
+            bytes.push(0); // Null terminator
+            Some(bytes)
+        },
+
+        _ => None 
+    }
+}
+
 
 fn parse_register(reg: &str) -> Reg {
     match reg.to_uppercase().as_str() {
@@ -158,6 +185,13 @@ fn parse_line(line: &str, state: &mut State) -> Option<Instruction> {
             line.strip_suffix(':').unwrap().to_string(),
             state.current_addr,
         );
+        return None;
+    }
+    // Determine if directive
+    if line.starts_with('.') {
+        if let Some(bytes) = parse_directive(line, state) {
+            state.data.extend(bytes);
+        }
         return None;
     }
 
@@ -446,7 +480,7 @@ fn resolve_address(encoding: u32, state: &State) -> u32 {
     // +/-1MB, is encoded as "imm19" times 4.
     if let Some((symbol, instr_addr)) = state.unresolved_refs.last() {
         if let Some(&targ_addr) = state.labels.get(symbol) {
-            let pc = instr_addr + 4;
+            let pc = instr_addr + 8;
 
             let offset = (targ_addr as i64) - (pc as i64);
 
@@ -513,10 +547,10 @@ fn assemble(path: String) -> io::Result<()> {
             }
             _ => {}
         }
-        println!("{:?} {:032b}", &instruction, &encoded_line);
+       if DEBUG{ println!("{:?} {:032b}", &instruction, &encoded_line);}
         encoded.push(encoded_line);
     }
-    // println!("Final State: {:#?}", &state);
+    println!("Final State: {:#?}", &state);
     let file = File::create("output.bin").expect("Failed to create file");
 
     let mut writer = BufWriter::new(file);
@@ -526,6 +560,16 @@ fn assemble(path: String) -> io::Result<()> {
 
         writer.write_all(&bytes)?;
     }
+
+    let current_pos = encoded.len() * 4; // Each instruction is 4 bytes
+    let padding = (8 - (current_pos % 8)) % 8;
+    for _ in 0..padding {
+        writer.write_all(&[0])?;
+    }
+
+    // 3. Append the data section (literal pool)
+    writer.write_all(&state.data)?;
+
     return Ok(());
 }
 fn main() {
