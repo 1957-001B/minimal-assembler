@@ -582,10 +582,26 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs::File;
+    use std::io::Read;
 
     #[test]
-    fn test_parsing() {
-        let result = assemble("goal.s".to_string());
-        assert!(matches!(result, Ok(())))
+    fn test_asm() -> io::Result<()> {
+        // Assemble the source file
+        assemble("./example/goal.s".to_string())?;
+        
+        // Read the expected output
+        let mut file = File::open("./example/output.bin")?;
+        let mut expected = Vec::new();
+        file.read_to_end(&mut expected)?;
+        
+        // Read the actual output
+        let mut actual_file = File::open("output.bin")?;
+        let mut actual = Vec::new();
+        actual_file.read_to_end(&mut actual)?;
+        
+        // Compare binary outputs
+        assert_eq!(actual, expected);
+        Ok(())
     }
 }
