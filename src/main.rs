@@ -65,7 +65,7 @@ struct State {
     labels: HashMap<String, u64>,
     unresolved_refs: Vec<(String, usize)>,
     current_section: String,
-    data: Vec<u8>
+    data: Vec<u8>,
 }
 impl State {
     fn new() -> Self {
@@ -116,28 +116,27 @@ enum Reg {
     X30 = 30,
     XZR = 31,
 }
-fn parse_directive (directive: &str, state: &mut State) -> Option<Vec<u8>>{
+fn parse_directive(directive: &str, state: &mut State) -> Option<Vec<u8>> {
     let parts: Vec<&str> = directive.split_whitespace().collect();
     match parts[0] {
         ".data" => {
             state.current_section = ".data".to_string();
             None
-        },
+        }
         ".text" => {
             state.current_section = ".text".to_string();
             None
-        },
+        }
         ".asciz" => {
             let s = directive.split('"').nth(1).unwrap_or("");
             let mut bytes = s.as_bytes().to_vec();
             bytes.push(0); // Null terminator
             Some(bytes)
-        },
+        }
 
-        _ => None 
+        _ => None,
     }
 }
-
 
 fn parse_register(reg: &str) -> Reg {
     match reg.to_uppercase().as_str() {
@@ -547,7 +546,9 @@ fn assemble(path: String) -> io::Result<()> {
             }
             _ => {}
         }
-       if DEBUG{ println!("{:?} {:032b}", &instruction, &encoded_line);}
+        if DEBUG {
+            println!("{:?} {:032b}", &instruction, &encoded_line);
+        }
         encoded.push(encoded_line);
     }
     println!("Final State: {:#?}", &state);
