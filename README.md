@@ -1,4 +1,6 @@
-# minimal-assembler
+# ArmAsm
+
+Minimal Arm Assembler written in Rust.
 
 features:
 - MOVZ
