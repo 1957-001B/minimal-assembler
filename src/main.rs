@@ -5,7 +5,6 @@ use std::{
     io::{self, BufWriter, Read, Write},
 };
 
-const DEBUG: bool = false;
 #[derive(Debug, PartialEq)]
 enum Instruction {
     // Minimal
@@ -546,9 +545,8 @@ fn assemble(path: String) -> io::Result<()> {
             }
             _ => {}
         }
-        if DEBUG {
-            println!("{:?} {:032b}", &instruction, &encoded_line);
-        }
+        // println!("{:?} {:032b}", &instruction, &encoded_line);
+
         encoded.push(encoded_line);
     }
     println!("Final State: {:#?}", &state);
