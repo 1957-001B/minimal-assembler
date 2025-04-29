@@ -54,4 +54,4 @@ to
 00000020: 4865 6c6c 6f2c 2057 6f72 6c64 215c 6e00  Hello, World!\n.
 ```
 
-![verify](decomp.png)
+![verify](./decomp.png)
